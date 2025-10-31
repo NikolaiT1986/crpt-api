@@ -356,12 +356,12 @@ public class CrptApi {
         String productDocumentBase64 = Base64.getEncoder()
                 .encodeToString(documentJson.getBytes(StandardCharsets.UTF_8));
 
-        CreateRequestBody body = new CreateRequestBody();
-        body.document_format = format;
-        body.product_document = productDocumentBase64;
-        body.type = type;
-        body.signature = detachedSignatureBase64;
-        body.product_group = passPgInQuery ? null : productGroup;
+        Map<String, Object> body = new HashMap<>();
+        body.put("document_format", format);
+        body.put("product_document", productDocumentBase64);
+        body.put("type", type);
+        body.put("signature", detachedSignatureBase64);
+        body.put("product_group", passPgInQuery ? null : productGroup);
 
         String pathWithQuery = passPgInQuery
                 ? this.createPath + "?" + QUERY_PARAM_PRODUCT_GROUP + "=" + Urls.encode(productGroup)
@@ -602,17 +602,6 @@ public class CrptApi {
     }
 
     // ============================== МОДЕЛИ ДАННЫХ (РАСШИРЯЕМЫЕ) ==============================
-
-    /**
-     * Тело единого метода создания документов.
-     */
-    protected static class CreateRequestBody {
-        public String document_format;   // "MANUAL" | "XML" | "CSV"
-        public String product_document;  // base64(JSON/XML/CSV)
-        public String product_group;     // можно не указывать в теле, если передаём ?pg=...
-        public String signature;         // base64 откреплённая подпись (detached)
-        public String type;              // напр., "LP_INTRODUCE_GOODS"
-    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class LpIntroduceGoodsDocument {
