@@ -335,7 +335,7 @@ public class CrptApi {
     protected HttpResponse<String> createDocument(
             String bearerToken,
             String productGroup,
-            Object document,
+            CrptDocument document,
             String detachedSignatureBase64,
             String type,
             String format,
@@ -603,10 +603,19 @@ public class CrptApi {
 
     // ============================== МОДЕЛИ ДАННЫХ (РАСШИРЯЕМЫЕ) ==============================
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class LpIntroduceGoodsDocument {
 
-        private Description description;
+    /**
+     * Маркерный интерфейс для всех моделей документов Честного знака,
+     */
+    public interface CrptDocument {
+    }
+
+    /**
+     * Абстрактная базовая модель документа Честного знака (ГИС МТ).
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static abstract class AbstractCrptDocument implements CrptDocument {
+
         private String doc_id;
         private String doc_status;
         private String doc_type;
@@ -616,12 +625,15 @@ public class CrptApi {
         private String producer_inn;
         private String production_date;   // "yyyy-MM-dd"
         private String production_type;   // OWN_PRODUCTION | CONTRACT_PRODUCTION
-        private List<Product> products;
         private String reg_date;          // "yyyy-MM-dd"
         private String reg_number;
 
         @JsonIgnore
-        protected final Map<String, Object> extra = new HashMap<>();
+        private final Map<String, Object> extra = createExtraMap();
+
+        protected Map<String, Object> createExtraMap() {
+            return new HashMap<>();
+        }
 
         @JsonAnySetter
         public void putExtra(String key, Object value) {
@@ -637,15 +649,7 @@ public class CrptApi {
             putExtra(key, value);
         }
 
-        // --- Публичные геттеры/сеттеры (часть внешнего контракта) ---
-
-        public Description getDescription() {
-            return description;
-        }
-
-        public void setDescription(Description description) {
-            this.description = description;
-        }
+        // --- геттеры/сеттеры общих полей ---
 
         public String getDoc_id() {
             return doc_id;
@@ -719,14 +723,6 @@ public class CrptApi {
             this.production_type = production_type;
         }
 
-        public List<Product> getProducts() {
-            return products;
-        }
-
-        public void setProducts(List<Product> products) {
-            this.products = products;
-        }
-
         public String getReg_date() {
             return reg_date;
         }
@@ -742,13 +738,43 @@ public class CrptApi {
         public void setReg_number(String reg_number) {
             this.reg_number = reg_number;
         }
+    }
+
+    /**
+     * Документ «Ввод в оборот товара, произведённого на территории РФ», тип LP_INTRODUCE_GOODS, формат MANUAL.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class LpIntroduceGoodsDocument extends AbstractCrptDocument {
+
+        private Description description;
+        private List<Product> products;
+
+        public Description getDescription() {
+            return description;
+        }
+
+        public void setDescription(Description description) {
+            this.description = description;
+        }
+
+        public List<Product> getProducts() {
+            return products;
+        }
+
+        public void setProducts(List<Product> products) {
+            this.products = products;
+        }
 
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Description {
             private String participantInn;
 
             @JsonIgnore
-            protected final Map<String, Object> extra = new HashMap<>();
+            private final Map<String, Object> extra = createExtraMap();
+
+            protected Map<String, Object> createExtraMap() {
+                return new HashMap<>();
+            }
 
             @JsonAnySetter
             void putExtra(String key, Object value) {
@@ -786,7 +812,11 @@ public class CrptApi {
             private String uitu_code;
 
             @JsonIgnore
-            protected final Map<String, Object> extra = new HashMap<>();
+            private final Map<String, Object> extra = createExtraMap();
+
+            protected Map<String, Object> createExtraMap() {
+                return new HashMap<>();
+            }
 
             @JsonAnySetter
             public void putExtra(String key, Object value) {
@@ -883,10 +913,10 @@ public class CrptApi {
             private final LpIntroduceGoodsDocument document = new LpIntroduceGoodsDocument();
 
             public Builder descriptionParticipantInn(String participantInn) {
-                Description description = document.getDescription();
-                if (description == null) description = new Description();
-                description.setParticipantInn(participantInn);
-                document.setDescription(description);
+                Description d = document.getDescription();
+                if (d == null) d = new Description();
+                d.setParticipantInn(participantInn);
+                document.setDescription(d);
                 return this;
             }
 
