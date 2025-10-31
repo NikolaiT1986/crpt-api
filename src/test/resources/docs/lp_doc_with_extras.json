@@ -1,0 +1,22 @@
+{
+  "description": { "participantInn": "7711111111", "unknownField": "will be ignored" },
+  "doc_id": "test-doc-2",
+  "doc_status": "DRAFT",
+  "doc_type": "LP_INTRODUCE_GOODS",
+  "importRequest": true,
+  "owner_inn": "7711111112",
+  "participant_inn": "7711111113",
+  "producer_inn": "7711111114",
+  "production_date": "2025-09-01",
+  "production_type": "CONTRACT_PRODUCTION",
+  "products": [
+    {
+      "tnved_code": "24681012",
+      "production_date": "2025-08-31",
+      "extra_in_product": "ok"
+    }
+  ],
+  "reg_date": "2025-09-02",
+  "reg_number": "REG-XYZ",
+  "unknown_root": 42
+}

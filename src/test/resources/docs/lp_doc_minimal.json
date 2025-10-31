@@ -1,0 +1,20 @@
+{
+  "description": { "participantInn": "7700000000" },
+  "doc_id": "test-doc-1",
+  "doc_status": "DRAFT",
+  "doc_type": "LP_INTRODUCE_GOODS",
+  "importRequest": false,
+  "owner_inn": "7700000001",
+  "participant_inn": "7700000002",
+  "producer_inn": "7700000003",
+  "production_date": "2025-10-30",
+  "production_type": "OWN_PRODUCTION",
+  "products": [
+    {
+      "tnved_code": "1234567",
+      "production_date": "2025-10-30"
+    }
+  ],
+  "reg_date": "2025-10-30",
+  "reg_number": "REG-001"
+}
