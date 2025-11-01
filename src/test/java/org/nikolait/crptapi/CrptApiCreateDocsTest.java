@@ -21,7 +21,7 @@ import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class CrptApiDocsTest {
+class CrptApiCreateDocsTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
@@ -99,22 +99,6 @@ class CrptApiDocsTest {
 
     // ======================== ХЕЛПЕРЫ ========================
 
-    /**
-     * Прод-код валидирует «ровно одно из uit_code/uitu_code».
-     * JSON-файлы этого не гарантируют — в тесте доводим документ до валидного состояния.
-     */
-    private static void ensureExactlyOneOfUitOrUitu(CrptApi.LpIntroduceGoodsDocument doc) {
-        if (doc.getProducts() == null) return;
-        for (CrptApi.LpIntroduceGoodsDocument.Product p : doc.getProducts()) {
-            boolean hasUit = p.getUit_code() != null && !p.getUit_code().trim().isEmpty();
-            boolean hasUitu = p.getUitu_code() != null && !p.getUitu_code().trim().isEmpty();
-            if (hasUit == hasUitu) {
-                p.setUitu_code(null);
-                p.setUit_code("TEST-UIT-0000000000000");
-            }
-        }
-    }
-
     private static String readBody(HttpRequest request) throws Exception {
         CountDownLatch done = new CountDownLatch(1);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -162,10 +146,7 @@ class CrptApiDocsTest {
         CrptApi.LpIntroduceGoodsDocument doc =
                 MAPPER.readValue(srcJson, CrptApi.LpIntroduceGoodsDocument.class);
 
-        // 3) Делаем документ валидным под правило uit/uitu
-        ensureExactlyOneOfUitOrUitu(doc);
-
-        // 4) Готовим окружение клиента
+        // 3) Клиент и окружение
         CapturingHttpAdapter http = new CapturingHttpAdapter();
         CountingLimiter limiter = new CountingLimiter();
         CrptApi api = new CrptApi(
@@ -179,10 +160,10 @@ class CrptApiDocsTest {
         String pg = "milk";
         String signature = Base64.getEncoder().encodeToString("fake-signature".getBytes(StandardCharsets.UTF_8));
 
-        // 5) Вызываем createLpIntroduceGoods (passPgInQuery=true по умолчанию)
+        // 4) Вызываем createLpIntroduceGoods (passPgInQuery=true по умолчанию)
         HttpResponse<String> response = api.createLpIntroduceGoods(token, pg, doc, signature);
 
-        // 6) Проверяем базовые инварианты
+        // 5) Проверяем базовые инварианты
         assertEquals(200, response.statusCode());
         assertEquals(1, limiter.acquires);
         assertEquals(1, http.calls);
@@ -193,7 +174,7 @@ class CrptApiDocsTest {
         assertEquals("Bearer " + token, req.headers().firstValue("Authorization").orElse(null));
         assertEquals("application/json", req.headers().firstValue("Content-Type").orElse(null));
 
-        // 7) Тело: формат, тип, подпись, pg=null в body
+        // 6) Тело: формат, тип, подпись, pg=null в body
         String body = readBody(req);
         JsonNode root = MAPPER.readTree(body);
         assertEquals("MANUAL", root.path("document_format").asText());
@@ -201,7 +182,7 @@ class CrptApiDocsTest {
         assertEquals(signature, root.path("signature").asText());
         assertTrue(root.has("product_group") && root.get("product_group").isNull(), "product_group should be null");
 
-        // 8) product_document = base64(JSON(doc))
+        // 7) product_document = base64(JSON(doc))
         String productDocB64 = root.path("product_document").asText();
         String decodedJson = new String(Base64.getDecoder().decode(productDocB64), StandardCharsets.UTF_8);
 

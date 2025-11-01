@@ -1,22 +1,22 @@
 {
-  "doc_id": "doc-ex",
+  "doc_id": "doc-rt",
   "doc_status": "DRAFT",
   "doc_type": "LP_INTRODUCE_GOODS",
   "owner_inn": "7700000000",
   "participant_inn": "7700000000",
   "producer_inn": "7700000000",
-  "production_date": "2025-01-02",
+  "production_date": "2025-01-03",
   "production_type": "OWN_PRODUCTION",
-  "top_level_extra": "value",
+  "unknown_top": 42,
   "description": {
     "participantInn": "7700000000",
-    "desc_extra": true
+    "unknown_desc": "x"
   },
   "products": [
     {
       "tnved_code": "640399",
-      "uitu_code": "00000000000000000000000000000000002",
-      "prod_extra": 123
+      "uit_code": "00000000000000000000000000000000001",
+      "unknown_prod": true
     }
   ]
 }

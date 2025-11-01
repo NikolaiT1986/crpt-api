@@ -1,9 +1,6 @@
 package org.nikolait.crptapi;
 
-import com.fasterxml.jackson.annotation.JsonAnyGetter;
-import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -613,6 +610,7 @@ public class CrptApi {
     /**
      * Абстрактная базовая модель документа Честного знака (ГИС МТ).
      */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static abstract class AbstractCrptDocument implements CrptDocument {
 
@@ -743,6 +741,7 @@ public class CrptApi {
     /**
      * Документ «Ввод в оборот товара, произведённого на территории РФ», тип LP_INTRODUCE_GOODS, формат MANUAL.
      */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class LpIntroduceGoodsDocument extends AbstractCrptDocument {
 
@@ -765,6 +764,7 @@ public class CrptApi {
             this.products = products;
         }
 
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Description {
             private String participantInn;
@@ -799,6 +799,7 @@ public class CrptApi {
             }
         }
 
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Product {
             private String certificate_document;
