@@ -180,7 +180,7 @@ class CrptApiCreateDocsTest {
         assertEquals("MANUAL", root.path("document_format").asText());
         assertEquals("LP_INTRODUCE_GOODS", root.path("type").asText());
         assertEquals(signature, root.path("signature").asText());
-        assertTrue(root.has("product_group") && root.get("product_group").isNull(), "product_group should be null");
+        assertFalse(root.has("product_group"), "product_group should be absent when passed in query");
 
         // 7) product_document = base64(JSON(doc))
         String productDocB64 = root.path("product_document").asText();

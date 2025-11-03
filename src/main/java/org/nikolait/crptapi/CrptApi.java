@@ -38,10 +38,9 @@ public class CrptApi {
 
     /**
      * Формат документа в запросе.
-     * <p>MANUAL — формат JSON.</p>
      */
     public enum DocumentFormat {
-        MANUAL, XML, CSV
+        MANUAL //  формат JSON
     }
 
     /**
@@ -54,11 +53,11 @@ public class CrptApi {
     /**
      * Дефолтный базовый URL (песочница ГИС МТ).
      */
-    public static final String DEFAULT_BASE_URI = "https://markirovka.demo.crpt.tech";
+    protected static final String DEFAULT_BASE_URI = "https://markirovka.demo.crpt.tech";
     /**
      * Дефолтный путь «Единого метода создания документов».
      */
-    public static final String DEFAULT_CREATE_PATH = "/api/v3/lk/documents/create";
+    protected static final String DEFAULT_CREATE_PATH = "/api/v3/lk/documents/create";
 
     // --- Константы протокола/заголовков
     protected static final String HDR_AUTH = "Authorization";
@@ -67,7 +66,7 @@ public class CrptApi {
 
     // --- Прочие константы протокола
     protected static final String BEARER_PREFIX = "Bearer ";
-    protected static final String QUERY_PARAM_PRODUCT_GROUP = "pg";
+    protected static final String QUERY_PG = "?pg=";
 
     protected final URI baseUri;               // напр., https://ismp.crpt.ru или https://markirovka.sandbox.crptech.ru
     protected final String createPath;         // напр., /api/v3/lk/documents/create
@@ -78,10 +77,9 @@ public class CrptApi {
 
     /**
      * Конструктор по условию задания.
-     * <p>Использует базовый URL песочницы ({@link #DEFAULT_BASE_URI}),
-     * дефолтный путь {@link #DEFAULT_CREATE_PATH}, стандартный HTTP-клиент
-     * и дефолтную реализацию лимитера {@link SlidingWindowRateLimiter}.
-     * <p>Ограничение — N запросов за одну единицу {@code timeUnit}.
+     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
+     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param timeUnit     единица окна (секунда, минута и т.п.)
      * @param requestLimit макс. число запросов за один интервал (>0)
@@ -96,15 +94,16 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL.
-     * <p>Путь берётся по умолчанию ({@link #DEFAULT_CREATE_PATH}),
-     * HTTP-клиент дефолтный, лимитер — {@link SlidingWindowRateLimiter}.
-     * <p>Ограничение — N запросов за одну единицу {@code timeUnit}.
+     * <p>Использует дефолтный путь ({@link #DEFAULT_CREATE_PATH}),
+     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес (например, {@code "https://ismp.crpt.ru"})
      * @param timeUnit     единица окна (секунда, минута и т.п.)
      * @param requestLimit макс. число запросов за один интервал (>0)
-     * @throws IllegalArgumentException если {@code requestLimit <= 0}
-     * @throws NullPointerException     если {@code baseUri} или {@code timeUnit} равны {@code null}
+     * @throws IllegalArgumentException если {@code baseUri} равен {@code null} или пустой,
+     *                                  либо {@code requestLimit <= 0}
+     * @throws NullPointerException     или {@code timeUnit} равен {@code null}
      */
     public CrptApi(String baseUri, TimeUnit timeUnit, int requestLimit) {
         this(baseUri, DEFAULT_CREATE_PATH,
@@ -113,14 +112,17 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL и пути метода.
-     * <p>HTTP-клиент дефолтный, лимитер — {@link SlidingWindowRateLimiter}.
-     * <p>Ограничение — N запросов за одну единицу {@code timeUnit}.
+     * Конструктор с указанием базового URL и пути.
+     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес
      * @param createPath   путь метода, если не начинается с {@code /}, он будет добавлен
      * @param timeUnit     единица окна (секунда, минута и т.п.)
      * @param requestLimit макс. число запросов за один интервал (>0)
+     * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты,
+     *                                  либо {@code requestLimit <= 0}
+     * @throws NullPointerException     если {@code timeUnit} равен {@code null}
      */
     public CrptApi(String baseUri, String createPath, TimeUnit timeUnit, int requestLimit) {
         this(baseUri, createPath,
@@ -129,15 +131,18 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути метода и собственного HTTP-клиента.
-     * <p>Лимитер — {@link SlidingWindowRateLimiter}.
-     * <p>Ограничение — N запросов за одну единицу {@code timeUnit}.
+     * Конструктор с указанием базового URL, пути и собственного {@link HttpClientAdapter}
+     * <p>Использует лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес
      * @param createPath   путь метода, если не начинается с {@code /}, он будет добавлен
      * @param timeUnit     единица окна
      * @param requestLimit макс. число запросов за один интервал (>0)
-     * @param httpAdapter  HTTP-адаптер (можно подменить в тестах)
+     * @param httpAdapter  HTTP-адаптер
+     * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты,
+     *                                  либо {@code requestLimit <= 0}
+     * @throws NullPointerException     если {@code timeUnit} или {@code httpAdapter} равен {@code null}
      */
     public CrptApi(String baseUri, String createPath, TimeUnit timeUnit,
                    int requestLimit, HttpClientAdapter httpAdapter) {
@@ -147,14 +152,16 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с возможностью указать количество единиц окна.
-     * <p>Например: 5 запросов за 2 секунды — {@code new CrptApi(2, SECONDS, 5)}.
+     * Конструктор с возможностью указать размер окна в единицах времени.
+     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
+     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param windowAmount число единиц времени в окне (>0)
      * @param timeUnit     единица окна (секунда, минута и т.п.)
      * @param requestLimit макс. число запросов за одно окно (>0)
      * @throws IllegalArgumentException если {@code windowAmount <= 0} или {@code requestLimit <= 0}
-     * @throws NullPointerException     если {@code timeUnit == null}
+     * @throws NullPointerException     если {@code timeUnit} равен {@code null}
      */
     public CrptApi(long windowAmount, TimeUnit timeUnit, int requestLimit) {
         this(DEFAULT_BASE_URI, DEFAULT_CREATE_PATH,
@@ -163,13 +170,18 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL и количества единиц окна.
-     * <p>Пример: {@code new CrptApi("https://ismp.crpt.ru", 10, MINUTES, 100)}.
+     * Конструктор с указанием базового URL и размер окна в единицах времени.
+     * <p>Использует дефолтный путь {@link #DEFAULT_CREATE_PATH},
+     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param baseUri      базовый адрес
      * @param windowAmount число единиц времени в окне (>0)
      * @param timeUnit     единица окна
      * @param requestLimit макс. число запросов за одно окно (>0)
+     * @throws IllegalArgumentException если {@code baseUri} равен {@code null} или пуст,
+     *                                  либо {@code windowAmount <= 0} или {@code requestLimit <= 0}
+     * @throws NullPointerException     если {@code timeUnit} равен {@code null}
      */
     public CrptApi(String baseUri, long windowAmount, TimeUnit timeUnit, int requestLimit) {
         this(baseUri, DEFAULT_CREATE_PATH,
@@ -178,8 +190,9 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути метода и количества единиц окна.
-     * <p>Пример: {@code new CrptApi("https://ismp.crpt.ru", "/api/v3/lk/documents/create", 5, SECONDS, 10)}.
+     * Конструктор с указанием базового URL, пути и размер окна в единицах времени.
+     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param baseUri      базовый адрес
      * @param createPath   путь метода, если не начинается с {@code /}, он будет добавлен
@@ -194,7 +207,8 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути метода, количества единиц окна и собственного HTTP-клиента.
+     * Конструктор с указанием базового URL, пути метода, количества единиц окна и
+     * собственной реализации {@link HttpClientAdapter}.
      * <p>Даёт полный контроль над поведением клиента.
      *
      * @param baseUri      базовый адрес
@@ -202,8 +216,12 @@ public class CrptApi {
      * @param windowAmount число единиц времени в окне (>0)
      * @param timeUnit     единица окна
      * @param requestLimit макс. число запросов за одно окно (>0)
-     * @param httpAdapter  HTTP-адаптер (можно подменить в тестах)
+     * @param httpAdapter  адаптер {@link HttpClientAdapter}
+     * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты,
+     *                                  либо {@code windowAmount <= 0} или {@code requestLimit <= 0}
+     * @throws NullPointerException     если {@code timeUnit} равен {@code null}
      */
+
     public CrptApi(String baseUri, String createPath, long windowAmount, TimeUnit timeUnit,
                    int requestLimit, HttpClientAdapter httpAdapter) {
         this(baseUri, createPath,
@@ -213,11 +231,12 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием собственного лимитера.
-     * <p>Базовый URL берётся по умолчанию ({@link #DEFAULT_BASE_URI}),
-     * путь — по умолчанию ({@link #DEFAULT_CREATE_PATH}),
-     * HTTP-клиент — дефолтный ({@link DefaultHttpClientAdapter}).
+     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
+     * HTTP-клиент из {@link DefaultHttpClientAdapter}.
+     * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param limiter стратегия лимитирования
+     * @throws NullPointerException если {@code limiter} равен {@code null}
      */
     public CrptApi(RequestLimiter limiter) {
         this(DEFAULT_BASE_URI, DEFAULT_CREATE_PATH, limiter, new DefaultHttpClientAdapter());
@@ -225,8 +244,8 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL и собственного лимитера.
-     * <p>Путь берётся по умолчанию ({@link #DEFAULT_CREATE_PATH}),
-     * HTTP-клиент — дефолтный ({@link DefaultHttpClientAdapter}).
+     * <p>Использует дефолтный путь {@link #DEFAULT_CREATE_PATH} и HTTP-клиент из {@link DefaultHttpClientAdapter}.
+     * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param baseUri базовый адрес
      * @param limiter стратегия лимитирования
@@ -236,12 +255,15 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути метода и собственного лимитера.
-     * <p>HTTP-клиент — дефолтный ({@link DefaultHttpClientAdapter}).
+     * Конструктор с указанием базового URL, пути и собственного лимитера.
+     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter}.
+     * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param baseUri    базовый адрес
      * @param createPath путь метода, если не начинается с {@code /}, он будет добавлен
      * @param limiter    стратегия лимитирования
+     * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты
+     * @throws NullPointerException     если {@code limiter} равен {@code null}
      */
     public CrptApi(String baseUri, String createPath, RequestLimiter limiter) {
         this(baseUri, createPath, limiter, new DefaultHttpClientAdapter());
@@ -249,38 +271,39 @@ public class CrptApi {
 
 
     /**
-     * «Максимальный контроль»: инжекция собственного лимитера и HTTP-клиента.
-     * <p>Позволяет, например, разделить одну квоту между несколькими клиентами,
-     * передав общий {@link RequestLimiter}, либо использовать распределённый лимитер.
+     * Конструктор с максимальным контролем конфигурации.
      *
-     * @param baseUri     базовый адрес
-     * @param createPath  путь метода, если не начинается с {@code /}, он будет добавлен
-     * @param limiter     стратегия лимитирования
-     * @param httpAdapter HTTP-адаптер
+     * @param baseUri     базовый адрес (не пустой)
+     * @param createPath  путь метода (нормализуется к виду с ведущим '/')
+     * @param limiter     стратегия лимитирования (не null)
+     * @param httpAdapter HTTP-адаптер (не null)
+     * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты
+     * @throws NullPointerException     если {@code limiter} или {@code httpAdapter} равен {@code null}
      */
     public CrptApi(String baseUri, String createPath, RequestLimiter limiter, HttpClientAdapter httpAdapter) {
-        requireNotBlank(baseUri, "baseUri");
-        requireNotBlank(createPath, "createPath");
-        requireNotNull(limiter, "limiter");
-        requireNotNull(httpAdapter, "httpAdapter");
-
-        this.baseUri = URI.create(baseUri);
-        this.createPath = normalizePath(createPath);
-        this.http = httpAdapter;
-        this.limiter = limiter;
+        this.baseUri = URI.create(requireNotBlank(baseUri, "baseUri"));
+        this.createPath = normalizePath(requireNotBlank(createPath, "createPath"));
+        this.http = requireNotNull(httpAdapter, "httpAdapter");
+        this.limiter = requireNotNull(limiter, "limiter");
     }
 
     // ============================== ПУБЛИЧНЫЕ МЕТОДЫ ==============================
 
     /**
      * Специализированный метод для «Ввод в оборот. Производство РФ»
-     * (тип документа {@code LP_INTRODUCE_GOODS}, формат {@code MANUAL}).
+     * (тип документа {@link DocumentType#LP_INTRODUCE_GOODS}, формат {@link DocumentFormat#MANUAL}).
      *
      * @param bearerToken             без префикса "Bearer "
      * @param productGroup            код товарной группы
-     * @param document                модель {@link LpIntroduceGoodsDocument}
-     * @param detachedSignatureBase64 откреплённая подпись (base64) над исходным JSON документа
-     * @param passPgInQuery           true — передавать pg в query (?pg=...), false — в теле запроса
+     * @param document                модель документа
+     * @param detachedSignatureBase64 откреплённая подпись в {@code base64}
+     * @param passPgInQuery           {@code true} — передавать pg в query (?pg=...), {@code false} — в теле запроса
+     * @return HTTP-ответ сервера
+     * @throws IOException              при ошибках ввода-вывода во время отправки
+     * @throws InterruptedException     если поток прерван во время ожидания лимитера или отправки
+     * @throws IllegalArgumentException при валидации или пустых параметрах
+     * @throws NullPointerException     если документ или обязательные поля равны null
+     * @throws IllegalStateException    при ошибке сериализации
      */
     public HttpResponse<String> createLpIntroduceGoods(
             String bearerToken,
@@ -323,11 +346,16 @@ public class CrptApi {
      *
      * @param bearerToken             без префикса "Bearer "
      * @param productGroup            код товарной группы
-     * @param document                модель документа (будет сериализована и закодирована в Base64)
-     * @param detachedSignatureBase64 откреплённая подпись над исходным JSON документа, Base64
-     * @param type                    тип документа (например, "LP_INTRODUCE_GOODS")
+     * @param document                модель документа, которая будет сериализована и закодирована {@code base64}
+     * @param detachedSignatureBase64 откреплённая подпись в {@code base64}
+     * @param type                    тип документа, например, "LP_INTRODUCE_GOODS"
      * @param format                  формат документа в теле (String, чтобы допускать будущие значения)
      * @param passPgInQuery           если true — передаём ?pg=...; иначе — в поле body.product_group
+     * @throws IOException              при ошибках ввода-вывода во время отправки
+     * @throws InterruptedException     если поток прерван во время ожидания лимитера или отправки
+     * @throws IllegalArgumentException при валидации или пустых параметрах
+     * @throws NullPointerException     если документ или обязательные поля равны null
+     * @throws IllegalStateException    при ошибке сериализации
      */
     protected HttpResponse<String> createDocument(
             String bearerToken,
@@ -358,13 +386,15 @@ public class CrptApi {
         body.put("product_document", productDocumentBase64);
         body.put("type", type);
         body.put("signature", detachedSignatureBase64);
-        body.put("product_group", passPgInQuery ? null : productGroup);
 
-        String pathWithQuery = passPgInQuery
-                ? this.createPath + "?" + QUERY_PARAM_PRODUCT_GROUP + "=" + Urls.encode(productGroup)
-                : this.createPath;
+        String createdPath = this.createPath;
+        if (!passPgInQuery) {
+            body.put("product_group", productGroup);
+        } else {
+            createdPath = this.createPath + QUERY_PG + Urls.encode(productGroup);
+        }
 
-        URI uri = baseUri.resolve(pathWithQuery);
+        URI uri = baseUri.resolve(createdPath);
 
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header(HDR_AUTH, BEARER_PREFIX + bearerToken)
@@ -402,12 +432,12 @@ public class CrptApi {
     }
 
     protected static String requireNotBlank(String value, String name) {
-        if (value == null || isBlank(value)) throw new IllegalArgumentException(name + " must not be blank");
+        if (isBlank(value)) throw new IllegalArgumentException(name + " must not be blank");
         return value;
     }
 
     protected static boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
+        return value == null || value.isBlank();
     }
 
     // Проверяет обязательные поля LP_INTRODUCE_GOODS и выбрасывает IllegalArgumentException, если найдены ошибки.

@@ -249,7 +249,7 @@ class CrptApiUnitTest {
         assertEquals("MANUAL", root.path("document_format").asText());
         assertEquals("LP_INTRODUCE_GOODS", root.path("type").asText());
         assertEquals("BASE64_SIGNATURE", root.path("signature").asText());
-        assertTrue(body.contains("\"product_group\":null"), "product_group should be null in body");
+        assertFalse(root.has("product_group"), "product_group should be absent when passed in query");
 
         String productDocumentB64 = root.path("product_document").asText();
         byte[] decoded = Base64.getDecoder().decode(productDocumentB64);
