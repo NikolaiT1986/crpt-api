@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -582,67 +583,101 @@ public class CrptApi {
     }
 
     /**
-     * Реализация блокирующего лимитера со скользящим окном (N запросов на окно) — без фоновых потоков.
-     * <p>
-     * Храним таймстемпы последних запросов. Если их уже >= limit и самое старое ещё внутри окна —
-     * ждём до момента, когда окно «съедет» за него. Потокобезопасность: ReentrantLock + Condition.
+     * Блокирующий лимитер со скользящим окном: не более {@code limit} запросов за интервал {@code windowNanos}.
+     * Реализация без фоновых потоков: ReentrantLock + Condition.
      */
     public static class SlidingWindowRateLimiter implements RequestLimiter {
-        protected final long windowNanos;
-        protected final int limit;
+        private final long windowNanos;
+        private final int limit;
 
-        protected final Deque<Long> timestamps = new ArrayDeque<>();
-        protected final ReentrantLock lock = new ReentrantLock(true);
-        protected final Condition spaceAvailable = lock.newCondition();
+        protected final Lock lock;
+        private final Condition slotFreed;
 
-        SlidingWindowRateLimiter(long windowNanos, int limit) {
+        // Кольцевой буфер временных меток запросов (наносекунды), ёмкость ровно limit
+        private final long[] buffer;
+        private int head = 0; // индекс старейшей метки
+        private int tail = 0; // индекс для следующей записи
+        private int size = 0; // текущее число меток
+
+        public SlidingWindowRateLimiter(long windowNanos, int limit) {
+            this(windowNanos, limit, true);
+        }
+
+        public SlidingWindowRateLimiter(long windowNanos, int limit, boolean fairLock) {
             this.windowNanos = requirePositive(windowNanos, "windowNanos");
             this.limit = requirePositive(limit, "limit");
+            this.buffer = new long[this.limit];
+            this.lock = new ReentrantLock(fairLock);
+            this.slotFreed = this.lock.newCondition();
         }
 
         @Override
         public void acquire() throws InterruptedException {
             lock.lock();
             try {
-                long now = System.nanoTime();
-                prune(now);
+                long now = nowNanos();
+                int removed = pruneExpired(now);
 
-                while (timestamps.size() >= limit) {
-                    long oldest = requireNotNull(timestamps.peekFirst(), "request timestamp");
-                    long deadline = oldest + windowNanos;
-                    long waitNanos = deadline - now;
-
-                    if (waitNanos > 0L) {
-                        long ignored = spaceAvailable.awaitNanos(waitNanos);
-                    }
-                    now = System.nanoTime();
-                    prune(now);
+                while (isFull()) {
+                    now = waitForNextExpiry(now);
+                    removed += pruneExpired(now);
                 }
 
-                timestamps.addLast(now);
-                spaceAvailable.signalAll();
+                append(now);
+                signalOnRemoved(removed);
             } finally {
                 lock.unlock();
             }
         }
 
-        /**
-         * Удаляет устаревшие таймстемпы (вышедшие за окно).
-         * Будит ожидающих только если что-то реально удалили.
-         */
-        protected void prune(long now) {
-            boolean removed = false;
-            while (!timestamps.isEmpty()) {
-                long oldest = timestamps.peekFirst();
-                if (now - oldest >= windowNanos) {
-                    timestamps.removeFirst();
-                    removed = true;
-                } else {
-                    break;
-                }
+
+        protected long nowNanos() {
+            return System.nanoTime();
+        }
+
+        protected boolean isFull() {
+            return size >= limit;
+        }
+
+        // Удаляет из головы буфера все отметки, вышедшие за окно [now - windowNanos, now].
+        protected int pruneExpired(long now) {
+            int removed = 0;
+            while (size > 0 && now - buffer[head] >= windowNanos) {
+                head = (head + 1 == limit) ? 0 : head + 1;
+                size--;
+                removed++;
             }
-            if (removed) {
-                spaceAvailable.signalAll();
+            return removed;
+        }
+
+        protected long oldestDeadlineNanos() {
+            if (size == 0) throw new IllegalStateException("oldestDeadlineNanos called when buffer is empty");
+            return buffer[head] + windowNanos;
+        }
+
+        protected long waitForNextExpiry(long now) throws InterruptedException {
+            long deadline = oldestDeadlineNanos();
+            long waitNanos = deadline - now;
+            if (waitNanos > 0L) {
+                long remaining = slotFreed.awaitNanos(waitNanos);
+                return (remaining <= 0L) ? deadline : nowNanos();
+            }
+            return nowNanos();
+        }
+
+        private void append(long t) {
+            buffer[tail] = t;
+            tail = (tail + 1 == limit) ? 0 : tail + 1;
+            size++;
+        }
+
+        // Нотификация ожидающих потоков: если удалили >1 — разбудим всех, если 1 — одного.
+        // Если 0 — молчим, чтобы избежать лишних пробуждений.
+        private void signalOnRemoved(int removed) {
+            if (removed > 1) {
+                slotFreed.signalAll();
+            } else if (removed == 1) {
+                slotFreed.signal();
             }
         }
     }
@@ -657,15 +692,21 @@ public class CrptApi {
         protected final int limit;
 
         protected final Semaphore semaphore;
-        protected final ReentrantLock lock = new ReentrantLock(true);
-        protected final Condition windowAdvanced = lock.newCondition();
+        protected final Lock lock;
+        protected final Condition windowAdvanced;
 
         protected long windowStartNanos;
 
         public FixedWindowSemaphoreLimiter(long windowNanos, int limit) {
+            this(windowNanos, limit, true, true);
+        }
+
+        public FixedWindowSemaphoreLimiter(long windowNanos, int limit, boolean fairSemaphore, boolean fairLock) {
             this.windowNanos = requirePositive(windowNanos, "windowNanos");
             this.limit = requirePositive(limit, "limit");
-            this.semaphore = new java.util.concurrent.Semaphore(limit, true);
+            this.semaphore = new Semaphore(limit, fairSemaphore);
+            this.lock = new ReentrantLock(fairLock);
+            this.windowAdvanced = this.lock.newCondition();
             this.windowStartNanos = System.nanoTime();
         }
 
