@@ -678,9 +678,9 @@ public class CrptApi {
     }
 
     /**
-     * Лимитер с фиксированным окном (≤ limit запросов за windowNanos) на семафоре.
-     * При превышении лимита блокирует вызов до начала следующего окна.
-     * Окно продвигается лениво при вызовах {@link #acquire()}, без фоновых потоков.
+     * Лимитер с фиксированным окном: не более {@code limit} запросов за интервал {@code windowNanos}.
+     * Реализация без фоновых потоков: Semaphore + ленивое продвижение окна при вызовах {@link #acquire()}.
+     * <p>При превышении лимита вызов {@link #acquire()} блокируется до начала следующего окна.</p>
      */
     public static class FixedWindowSemaphoreLimiter implements RequestLimiter {
         private final long windowNanos;
