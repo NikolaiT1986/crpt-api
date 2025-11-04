@@ -65,7 +65,7 @@ public class CrptApi {
      */
     protected static final String DEFAULT_CREATE_PATH = "/api/v3/lk/documents/create";
 
-    // Общий дефолтный ObjectMapper для сериализации и десериализации JSON.
+    // Общий дефолтный ObjectMapper для сериализации / десериализации JSON.
     protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
     // --- Константы протокола/заголовков
@@ -85,12 +85,7 @@ public class CrptApi {
     // --- Реестр конвертеров документов
     protected final Map<String, DocumentConverter> converters = new HashMap<>();
     protected final Object converterMonitor = new Object();
-    private boolean convertersFrozen = false;
-
-    {
-        // Регистрация дефолтного MANUAL (JSON) конвертера
-        converters.put(DocumentFormat.MANUAL.name(), new JsonDocumentConverter(OBJECT_MAPPER));
-    }
+    protected boolean convertersFrozen = false;
 
     // ================================= КОНСТРУКТОРЫ =================================
 
@@ -304,6 +299,7 @@ public class CrptApi {
         this.createPath = normalizePath(requireNotBlank(createPath, "createPath"));
         this.http = requireNotNull(httpAdapter, "httpAdapter");
         this.limiter = requireNotNull(limiter, "limiter");
+        registerConverter(DocumentFormat.MANUAL.name(), new JsonDocumentConverter(OBJECT_MAPPER));
     }
 
     // ============================== ПУБЛИЧНЫЕ МЕТОДЫ ==============================
