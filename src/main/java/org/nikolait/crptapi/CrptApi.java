@@ -65,6 +65,9 @@ public class CrptApi {
      */
     protected static final String DEFAULT_CREATE_PATH = "/api/v3/lk/documents/create";
 
+    // Общий дефолтный ObjectMapper для сериализации и десериализации JSON.
+    protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+
     // --- Константы протокола/заголовков
     protected static final String HDR_AUTH = "Authorization";
     protected static final String HDR_CONTENT_TYPE = "Content-Type";
@@ -74,9 +77,6 @@ public class CrptApi {
     protected static final String BEARER_PREFIX = "Bearer ";
     protected static final String QUERY_PG = "?pg=";
 
-    // Общий дефолтный ObjectMapper для сериализации и десериализации JSON.
-    protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
-
     protected final URI baseUri;               // напр., https://ismp.crpt.ru или https://markirovka.sandbox.crptech.ru
     protected final String createPath;         // напр., /api/v3/lk/documents/create
     protected final HttpClientAdapter http;    // можно заменить/подменить в тестах
@@ -85,7 +85,7 @@ public class CrptApi {
     // --- Реестр конвертеров документов
     protected final Map<String, DocumentConverter> converters = new HashMap<>();
     protected final Object converterMonitor = new Object();
-    protected boolean convertersFrozen = false;
+    private boolean convertersFrozen = false;
 
     {
         // Регистрация дефолтного MANUAL (JSON) конвертера
@@ -590,7 +590,7 @@ public class CrptApi {
         private final long windowNanos;
         private final int limit;
 
-        protected final Lock lock;
+        private final Lock lock;
         private final Condition slotFreed;
 
         // Кольцевой буфер временных меток запросов (наносекунды), ёмкость ровно limit
@@ -631,16 +631,16 @@ public class CrptApi {
         }
 
 
-        protected long nowNanos() {
+        private long nowNanos() {
             return System.nanoTime();
         }
 
-        protected boolean isFull() {
+        private boolean isFull() {
             return size >= limit;
         }
 
         // Удаляет из головы буфера все отметки, вышедшие за окно [now - windowNanos, now].
-        protected int pruneExpired(long now) {
+        private int pruneExpired(long now) {
             int removed = 0;
             while (size > 0 && now - buffer[head] >= windowNanos) {
                 head = (head + 1 == limit) ? 0 : head + 1;
@@ -650,12 +650,12 @@ public class CrptApi {
             return removed;
         }
 
-        protected long oldestDeadlineNanos() {
+        private long oldestDeadlineNanos() {
             if (size == 0) throw new IllegalStateException("oldestDeadlineNanos called when buffer is empty");
             return buffer[head] + windowNanos;
         }
 
-        protected long waitForNextExpiry(long now) throws InterruptedException {
+        private long waitForNextExpiry(long now) throws InterruptedException {
             long deadline = oldestDeadlineNanos();
             long waitNanos = deadline - now;
             if (waitNanos > 0L) {
@@ -688,14 +688,14 @@ public class CrptApi {
      * Окно продвигается лениво при вызовах {@link #acquire()}, без фоновых потоков.
      */
     public static class FixedWindowSemaphoreLimiter implements RequestLimiter {
-        protected final long windowNanos;
-        protected final int limit;
+        private final long windowNanos;
+        private final int limit;
 
-        protected final Semaphore semaphore;
-        protected final Lock lock;
-        protected final Condition windowAdvanced;
+        private final Semaphore semaphore;
+        private final Lock lock;
+        private final Condition windowAdvanced;
 
-        protected long windowStartNanos;
+        private long windowStartNanos;
 
         public FixedWindowSemaphoreLimiter(long windowNanos, int limit) {
             this(windowNanos, limit, true, true);
@@ -710,15 +710,9 @@ public class CrptApi {
             this.windowStartNanos = System.nanoTime();
         }
 
-        /**
-         * Блокирует, если лимит исчерпан, и ждёт начала нового окна.
-         * Возвращается только когда запрос можно выполнить, чтобы не превышать лимит.
-         */
         @Override
         public void acquire() throws InterruptedException {
-            if (semaphore.tryAcquire()) {
-                return;
-            }
+            if (semaphore.tryAcquire()) return;
 
             lock.lock();
             try {
@@ -732,9 +726,7 @@ public class CrptApi {
                         windowAdvanced.signalAll();
                     }
 
-                    if (semaphore.tryAcquire()) {
-                        return;
-                    }
+                    if (semaphore.tryAcquire()) return;
 
                     long waitNanos = windowStartNanos + windowNanos - now;
                     if (waitNanos > 0L) {
@@ -762,10 +754,10 @@ public class CrptApi {
      */
     public static class DefaultHttpClientAdapter implements HttpClientAdapter {
 
-        protected static final int DEFAULT_CONNECT_TIMEOUT_SECS = 5;
-        protected static final int DEFAULT_REQUEST_TIMEOUT_SECS = 30;
+        private static final int DEFAULT_CONNECT_TIMEOUT_SECS = 5;
+        private static final int DEFAULT_REQUEST_TIMEOUT_SECS = 30;
 
-        protected final HttpClient client = HttpClient.newBuilder()
+        private final HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(DEFAULT_CONNECT_TIMEOUT_SECS))
                 .build();
 
