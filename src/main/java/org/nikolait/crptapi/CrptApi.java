@@ -13,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -642,6 +643,65 @@ public class CrptApi {
             }
             if (removed) {
                 spaceAvailable.signalAll();
+            }
+        }
+    }
+
+    /**
+     * Лимитер с фиксированным окном (≤ limit запросов за windowNanos) на семафоре.
+     * При превышении лимита блокирует вызов до начала следующего окна.
+     * Окно продвигается лениво при вызовах {@link #acquire()}, без фоновых потоков.
+     */
+    public static class FixedWindowSemaphoreLimiter implements RequestLimiter {
+        protected final long windowNanos;
+        protected final int limit;
+
+        protected final Semaphore semaphore;
+        protected final ReentrantLock lock = new ReentrantLock(true);
+        protected final Condition windowAdvanced = lock.newCondition();
+
+        protected long windowStartNanos;
+
+        public FixedWindowSemaphoreLimiter(long windowNanos, int limit) {
+            this.windowNanos = requirePositive(windowNanos, "windowNanos");
+            this.limit = requirePositive(limit, "limit");
+            this.semaphore = new java.util.concurrent.Semaphore(limit, true);
+            this.windowStartNanos = System.nanoTime();
+        }
+
+        /**
+         * Блокирует, если лимит исчерпан, и ждёт начала нового окна.
+         * Возвращается только когда запрос можно выполнить, чтобы не превышать лимит.
+         */
+        @Override
+        public void acquire() throws InterruptedException {
+            if (semaphore.tryAcquire()) {
+                return;
+            }
+
+            lock.lock();
+            try {
+                for (; ; ) {
+                    long now = System.nanoTime();
+
+                    if (now - windowStartNanos >= windowNanos) {
+                        windowStartNanos = now;
+                        semaphore.drainPermits();
+                        semaphore.release(limit);
+                        windowAdvanced.signalAll();
+                    }
+
+                    if (semaphore.tryAcquire()) {
+                        return;
+                    }
+
+                    long waitNanos = windowStartNanos + windowNanos - now;
+                    if (waitNanos > 0L) {
+                        long ignored = windowAdvanced.awaitNanos(waitNanos);
+                    }
+                }
+            } finally {
+                lock.unlock();
             }
         }
     }

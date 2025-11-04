@@ -146,42 +146,138 @@ class SlidingWindowRateLimiterTest {
     }
 
     @Test
-    @DisplayName("Ожидание прерываемо: acquire() выбрасывает InterruptedException")
-    @Timeout(3)
-    void waiting_isInterruptible() throws Exception {
-        long windowMs = 500;
+    @DisplayName("Прерывание одного ожидающего не портит состояние: второй успешно занимает слот после сдвига окна")
+    @Timeout(4)
+    void interrupted_waiter_doesNotCorruptState() throws Exception {
+        long windowMs = 250;
         int limit = 1;
         CrptApi.SlidingWindowRateLimiter limiter =
                 new CrptApi.SlidingWindowRateLimiter(TimeUnit.MILLISECONDS.toNanos(windowMs), limit);
 
+        limiter.acquire(); // заняли единственный слот
+
+        CountDownLatch startedA = new CountDownLatch(1);
+        CountDownLatch startedB = new CountDownLatch(1);
+
+        AtomicReference<Throwable> errA = new AtomicReference<>(null);
+        AtomicReference<Throwable> errB = new AtomicReference<>(null);
+        AtomicReference<Long> bElapsedMs = new AtomicReference<>(null);
+
+        Thread A = new Thread(() -> {
+            startedA.countDown();
+            try {
+                limiter.acquire();
+                errA.set(new AssertionError("Ожидали InterruptedException для A"));
+            } catch (InterruptedException ignored) {
+                // ok
+            } catch (Throwable t) {
+                errA.set(t);
+            }
+        }, "waiter-A");
+
+        Thread B = new Thread(() -> {
+            startedB.countDown();
+            long before = System.nanoTime();
+            try {
+                limiter.acquire();
+                bElapsedMs.set(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - before));
+            } catch (Throwable t) {
+                errB.set(t);
+            }
+        }, "waiter-B");
+
+        A.start();
+        B.start();
+
+        assertTrue(startedA.await(500, TimeUnit.MILLISECONDS));
+        assertTrue(startedB.await(500, TimeUnit.MILLISECONDS));
+
+        Thread.sleep(50);     // дать потокам встать на ожидание
+        A.interrupt();        // прерываем только A
+
+        A.join(1000);
+        B.join(2000);
+
+        if (errA.get() != null) fail("A завершился с ошибкой: " + errA.get());
+        if (errB.get() != null) fail("B завершился с ошибкой: " + errB.get());
+
+        Long waitedB = bElapsedMs.get();
+        assertNotNull(waitedB, "B должен завершить acquire()");
+        assertTrue(waitedB >= windowMs - 80 && waitedB <= windowMs + 200,
+                "B должен ждать примерно длительность окна первого acquire (waited=" + waitedB + "ms)");
+
+        long t2 = System.nanoTime();
+        limiter.acquire();
+        long waitedAfterB = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t2);
+        assertTrue(waitedAfterB >= windowMs - 80 && waitedAfterB <= windowMs + 200,
+                "Сразу после B следующий acquire должен ждать новое окно (waited=" + waitedAfterB + "ms)");
+    }
+
+
+    @Test
+    @DisplayName("Один из нескольких ожидающих прерван — остальные продолжают корректно")
+    @Timeout(5)
+    void multiple_waiters_oneInterruptedOthersProceed() throws Exception {
+        long windowMs = 200;
+        int limit = 2;
+        CrptApi.SlidingWindowRateLimiter limiter =
+                new CrptApi.SlidingWindowRateLimiter(TimeUnit.MILLISECONDS.toNanos(windowMs), limit);
+
+        limiter.acquire();
         limiter.acquire();
 
-        CountDownLatch started = new CountDownLatch(1);
-        AtomicReference<Throwable> error = new AtomicReference<>(null);
+        CountDownLatch started = new CountDownLatch(3);
+        AtomicReference<Throwable> err1 = new AtomicReference<>(null);
+        AtomicReference<Throwable> err2 = new AtomicReference<>(null);
+        AtomicReference<Throwable> err3 = new AtomicReference<>(null);
 
-        Thread waiter = new Thread(() -> {
+        Thread w1 = new Thread(() -> {
             started.countDown();
             try {
                 limiter.acquire();
-                error.set(new AssertionError("Ожидали InterruptedException, но acquire() завершился нормально"));
-            } catch (InterruptedException expected) {
+                err1.set(new AssertionError("Ожидали InterruptedException для w1"));
+            } catch (InterruptedException ignored) {
                 // ok
             } catch (Throwable t) {
-                error.set(t);
+                err1.set(t);
             }
-        }, "waiter");
+        }, "w1");
 
-        waiter.start();
-        assertTrue(started.await(500, TimeUnit.MILLISECONDS));
-        Thread.sleep(50);
-        waiter.interrupt();
-        waiter.join(1000);
+        Thread w2 = new Thread(() -> {
+            started.countDown();
+            try {
+                limiter.acquire();
+            } catch (Throwable t) {
+                err2.set(t);
+            }
+        }, "w2");
 
-        Throwable t = error.get();
-        if (t != null) {
-            fail("Ожидали InterruptedException, но получили: " + t);
-        }
+        Thread w3 = new Thread(() -> {
+            started.countDown();
+            try {
+                limiter.acquire();
+            } catch (Throwable t) {
+                err3.set(t);
+            }
+        }, "w3");
+
+        w1.start();
+        w2.start();
+        w3.start();
+        assertTrue(started.await(800, TimeUnit.MILLISECONDS));
+
+        Thread.sleep(30); // дать потокам встать на ожидание
+        w1.interrupt();   // прерываем только одного
+
+        w1.join(1000);
+        w2.join(1500);
+        w3.join(2000);
+
+        if (err1.get() != null) fail("w1 завершился с ошибкой: " + err1.get());
+        if (err2.get() != null) fail("w2 завершился с ошибкой: " + err2.get());
+        if (err3.get() != null) fail("w3 завершился с ошибкой: " + err3.get());
     }
+
 
     @Test
     @DisplayName("Многоразовые acquire не накапливают задержки сверх ожидаемых окон")
