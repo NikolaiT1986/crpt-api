@@ -504,4 +504,39 @@ class CrptApiUnitTest {
         assertEquals(URI.create("https://h/api/v3/lk/documents/create?pg=milk"), http.lastRequest.uri());
     }
 
+    @Test
+    @DisplayName("MANUAL-конвертер переопределён и используется: product_document == Base64(toBytes)")
+    void manualConverter_isUsed() throws Exception {
+        var http = new CapturingHttpAdapter();
+        var limiter = new CountingLimiter();
+        var api = new CrptApi(
+                "https://example.org",
+                "/api/v3/lk/documents/create",
+                limiter,
+                http
+        );
+
+        // Переопределяем дефолтный MANUAL-конвертер на свой.
+        byte[] payload = "{\"x\":1}".getBytes(StandardCharsets.UTF_8);
+        api.registerConverter("MANUAL", d -> payload);
+
+        // Любой валидный документ
+        var doc = sampleDocWithUit();
+
+        var resp = api.createLpIntroduceGoods("TOKEN", "milk", doc, "SIG", true);
+        assertEquals(200, resp.statusCode());
+
+        String body = readBody(http.lastRequest);
+        JsonNode root = MAPPER.readTree(body);
+
+        assertEquals("MANUAL", root.path("document_format").asText());
+        assertEquals(
+                Base64.getEncoder().encodeToString(payload),
+                root.path("product_document").asText(),
+                "Должен использоваться наш переопределённый конвертер"
+        );
+        assertFalse(root.has("product_group"));
+        assertTrue(http.lastRequest.uri().toString().endsWith("?pg=milk"));
+    }
+
 }

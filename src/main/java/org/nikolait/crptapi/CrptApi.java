@@ -29,6 +29,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *   <li>Конструктор по заданию {@link #CrptApi(TimeUnit, int)} с дефолтным URL и путём;</li>
  *   <li>Перегруженные конструкторы с возможностью указать {@code baseUri}, {@code createPath};</li>
  *   <li>Возможность внедрить собственные {@link RequestLimiter} и {@link HttpClientAdapter};</li>
+ *   <li>Возможность зарегистрировать собственные {@link DocumentConverter};</li>
  *   <li>Ограничение запросов реализовано стратегией лимитера без фоновых потоков.</li>
  * </ul>
  *
@@ -38,16 +39,19 @@ public class CrptApi {
 
     /**
      * Формат документа в запросе.
+     * <p>MANUAL — формат JSON.</p>
      */
     public enum DocumentFormat {
-        MANUAL //  формат JSON
+        MANUAL, XML, CSV
     }
 
     /**
-     * Тип документа.
+     * Тип документа для ввода в оборот товара, произведённого на территории РФ.
      */
     public enum DocumentType {
-        LP_INTRODUCE_GOODS // Ввод в оборот товара, произведённого на территории РФ
+        LP_INTRODUCE_GOODS, // для формата MANUAL
+        LP_INTRODUCE_GOODS_CSV,
+        LP_INTRODUCE_GOODS_XML
     }
 
     /**
@@ -68,10 +72,23 @@ public class CrptApi {
     protected static final String BEARER_PREFIX = "Bearer ";
     protected static final String QUERY_PG = "?pg=";
 
+    // Общий дефолтный ObjectMapper для сериализации и десериализации JSON.
+    protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+
     protected final URI baseUri;               // напр., https://ismp.crpt.ru или https://markirovka.sandbox.crptech.ru
     protected final String createPath;         // напр., /api/v3/lk/documents/create
     protected final HttpClientAdapter http;    // можно заменить/подменить в тестах
     protected final RequestLimiter limiter;    // стратегия лимитирования запросов
+
+    // --- Реестр конвертеров документов
+    protected final Map<String, DocumentConverter> converters = new HashMap<>();
+    protected final Object converterMonitor = new Object();
+    protected boolean convertersFrozen = false;
+
+    {
+        // Регистрация дефолтного MANUAL (JSON) конвертера
+        converters.put(DocumentFormat.MANUAL.name(), new JsonDocumentConverter(OBJECT_MAPPER));
+    }
 
     // ================================= КОНСТРУКТОРЫ =================================
 
@@ -337,7 +354,6 @@ public class CrptApi {
         return createLpIntroduceGoods(bearerToken, productGroup, document, detachedSignatureBase64, true);
     }
 
-
     // ============================== ЗАЩИЩЁННЫЕ МЕТОДЫ ==============================
 
     /**
@@ -375,11 +391,10 @@ public class CrptApi {
         requireNotBlank(format, "format");
 
         limiter.acquire();
+        freezeConvertersIfNeeded();
 
-        // JSON -> base64
-        String documentJson = Json.toJson(document);
-        String productDocumentBase64 = Base64.getEncoder()
-                .encodeToString(documentJson.getBytes(StandardCharsets.UTF_8));
+        DocumentConverter converter = converters.get(format);
+        String productDocumentBase64 = Base64.getEncoder().encodeToString(converter.toBytes(document));
 
         Map<String, Object> body = new HashMap<>();
         body.put("document_format", format);
@@ -391,7 +406,7 @@ public class CrptApi {
         if (!passPgInQuery) {
             body.put("product_group", productGroup);
         } else {
-            createdPath = this.createPath + QUERY_PG + Urls.encode(productGroup);
+            createdPath = this.createPath + QUERY_PG + UrlUtils.encode(productGroup);
         }
 
         URI uri = baseUri.resolve(createdPath);
@@ -399,10 +414,32 @@ public class CrptApi {
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header(HDR_AUTH, BEARER_PREFIX + bearerToken)
                 .header(HDR_CONTENT_TYPE, MIME_JSON)
-                .POST(HttpRequest.BodyPublishers.ofString(Json.toJson(body)))
+                .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJson(body)))
                 .build();
 
         return http.send(req);
+    }
+
+    /**
+     * Регистрирует или перезаписывает конвертер формата до заморозки реестра.
+     * После 1-го вызова метода {@link #createDocument(String, String, CrptDocument, String, String, String, boolean)}
+     * реестр конвертеров замораживается, дальнейшие попытки регистрации приведут к {@link IllegalStateException}.
+     *
+     * @param format    идентификатор формата (регистр игнорируется)
+     * @param converter реализация конвертера (не {@code null})
+     * @throws IllegalArgumentException если {@code format} равен {@code null} или пустой
+     * @throws NullPointerException     если {@code converter} равен {@code null}
+     * @throws IllegalStateException    если реестр уже заморожен
+     */
+    public void registerConverter(String format, DocumentConverter converter) {
+        final String key = normalizeFormatKey(format);
+        requireNotNull(converter, "converter");
+
+        if (convertersFrozen) throw new IllegalStateException("Converters are frozen");
+        synchronized (converterMonitor) {
+            if (convertersFrozen) throw new IllegalStateException("Converters are frozen");
+            converters.put(key, converter);
+        }
     }
 
     // ============================== ХЕЛПЕРЫ ==============================
@@ -437,7 +474,11 @@ public class CrptApi {
     }
 
     protected static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        return value == null || value.trim().isEmpty();
+    }
+
+    protected static String normalizeFormatKey(String format) {
+        return requireNotBlank(format, "format").toUpperCase(Locale.ROOT);
     }
 
     // Проверяет обязательные поля LP_INTRODUCE_GOODS и выбрасывает IllegalArgumentException, если найдены ошибки.
@@ -485,16 +526,57 @@ public class CrptApi {
         }
     }
 
+    /**
+     * Замораживает реестр конвертеров, предотвращая дальнейшие изменения.
+     */
+    protected void freezeConvertersIfNeeded() {
+        if (!convertersFrozen) {
+            synchronized (converterMonitor) {
+                convertersFrozen = true;
+            }
+        }
+    }
+
+    // ============================== КОНВЕРТЕРЫ ==============================
+
+    /**
+     * Конвертер для преобразования Java-объектов в массив байт нужного формата.
+     * <p>При ошибках сериализации допускается выбрасывать {@link RuntimeException}.
+     */
+    @FunctionalInterface
+    public interface DocumentConverter {
+        byte[] toBytes(CrptDocument document);
+    }
+
+    /**
+     * Сериализует Java объект документа в JSON массив байт.
+     */
+    public static final class JsonDocumentConverter implements DocumentConverter {
+
+        private final ObjectMapper mapper;
+
+        public JsonDocumentConverter(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        @Override
+        public byte[] toBytes(CrptDocument document) {
+            requireNotNull(document, "document");
+            try {
+                return mapper.writeValueAsBytes(document);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException("JSON serialization failed", e);
+            }
+        }
+    }
 
     // ============================== ЛИМИТЕРЫ ==============================
 
     /**
      * Минимальный интерфейс лимитера запросов (локальный или распределённый).
      */
+    @FunctionalInterface
     public interface RequestLimiter {
-        /**
-         * Заблокировать вызывающий поток до появления слота под новый запрос.
-         */
         void acquire() throws InterruptedException;
     }
 
@@ -564,12 +646,12 @@ public class CrptApi {
         }
     }
 
-
     // ============================== HTTP АДАПТЕР ==============================
 
     /**
-     * Абстракция HTTP, чтобы было удобно подменять в тестах.
+     * Интерфейс отправки запросов, не ограниченный конкретным HTTP-клиентом.
      */
+    @FunctionalInterface
     public interface HttpClientAdapter {
         HttpResponse<String> send(HttpRequest request) throws IOException, InterruptedException;
     }
@@ -607,12 +689,11 @@ public class CrptApi {
     /**
      * Мини-JSON помощник на Jackson.
      */
-    protected static final class Json {
-        private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    protected static final class JsonUtils {
 
         static String toJson(Object o) {
             try {
-                return MAPPER.writeValueAsString(o);
+                return OBJECT_MAPPER.writeValueAsString(o);
             } catch (JsonProcessingException e) {
                 throw new IllegalStateException("JSON serialization failed", e);
             }
@@ -620,16 +701,15 @@ public class CrptApi {
     }
 
     /**
-     * Утилиты URL.
+     * Утилита URL.
      */
-    protected static final class Urls {
+    protected static final class UrlUtils {
         static String encode(String s) {
             return URLEncoder.encode(s, StandardCharsets.UTF_8);
         }
     }
 
     // ============================== МОДЕЛИ ДАННЫХ (РАСШИРЯЕМЫЕ) ==============================
-
 
     /**
      * Маркерный интерфейс для всех моделей документов Честного знака,
