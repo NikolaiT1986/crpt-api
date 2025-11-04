@@ -652,7 +652,6 @@ public class CrptApi {
         }
 
         private long oldestDeadlineNanos() {
-            if (size == 0) throw new IllegalStateException("oldestDeadlineNanos called when buffer is empty");
             return buffer[head] + windowNanos;
         }
 
