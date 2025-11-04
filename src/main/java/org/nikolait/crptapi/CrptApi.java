@@ -626,15 +626,6 @@ public class CrptApi {
             }
         }
 
-
-        private long nowNanos() {
-            return System.nanoTime();
-        }
-
-        private boolean isFull() {
-            return size >= limit;
-        }
-
         // Удаляет из головы буфера все отметки, вышедшие за окно [now - windowNanos, now].
         private int pruneExpired(long now) {
             int removed = 0;
@@ -646,9 +637,8 @@ public class CrptApi {
             return removed;
         }
 
-        private long oldestDeadlineNanos() {
-            if (size == 0) throw new IllegalStateException("oldestDeadlineNanos called when buffer is empty");
-            return buffer[head] + windowNanos;
+        private boolean isFull() {
+            return size >= limit;
         }
 
         private long waitForNextExpiry(long now) throws InterruptedException {
@@ -659,6 +649,11 @@ public class CrptApi {
                 return (remaining <= 0L) ? deadline : nowNanos();
             }
             return nowNanos();
+        }
+
+        private long oldestDeadlineNanos() {
+            if (size == 0) throw new IllegalStateException("oldestDeadlineNanos called when buffer is empty");
+            return buffer[head] + windowNanos;
         }
 
         private void append(long t) {
@@ -675,6 +670,10 @@ public class CrptApi {
             } else if (removed == 1) {
                 slotFreed.signal();
             }
+        }
+
+        private long nowNanos() {
+            return System.nanoTime();
         }
     }
 
