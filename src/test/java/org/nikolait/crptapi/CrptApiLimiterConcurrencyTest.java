@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import javax.net.ssl.SSLSession;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -55,7 +54,7 @@ class CrptApiLimiterConcurrencyTest {
                 }
 
                 @Override
-                public Optional<SSLSession> sslSession() {
+                public Optional<javax.net.ssl.SSLSession> sslSession() {
                     return Optional.empty();
                 }
 
