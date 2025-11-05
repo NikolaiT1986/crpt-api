@@ -95,8 +95,6 @@ public class CrptApi {
 
     /**
      * Конструктор по условию задания.
-     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
-     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param timeUnit     единица окна (секунда, минута и т.п.)
@@ -112,8 +110,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL.
-     * <p>Использует дефолтный путь ({@link #DEFAULT_CREATE_PATH}),
-     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес (например, {@code "https://ismp.crpt.ru"})
@@ -131,7 +127,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL и пути.
-     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес
@@ -149,8 +144,7 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути и собственного {@link HttpClientAdapter}
-     * <p>Использует лимитер {@link SlidingWindowRateLimiter}.
+     * Конструктор с указанием базового URL, пути и собственного HTTP-клиента
      * <p>Ограничивает {@code requestLimit} запросов за интервал 1 {@code timeUnit}.
      *
      * @param baseUri      базовый адрес
@@ -171,8 +165,6 @@ public class CrptApi {
 
     /**
      * Конструктор с возможностью указать размер окна в единицах времени.
-     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
-     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param windowAmount число единиц времени в окне (>0)
@@ -189,8 +181,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL и размер окна в единицах времени.
-     * <p>Использует дефолтный путь {@link #DEFAULT_CREATE_PATH},
-     * HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param baseUri      базовый адрес
@@ -209,7 +199,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL, пути и размер окна в единицах времени.
-     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter} и лимитер {@link SlidingWindowRateLimiter}.
      * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param baseUri      базовый адрес
@@ -225,16 +214,15 @@ public class CrptApi {
     }
 
     /**
-     * Конструктор с указанием базового URL, пути метода, количества единиц окна и
-     * собственной реализации {@link HttpClientAdapter}.
-     * <p>Даёт полный контроль над поведением клиента.
+     * Конструктор с указанием базового URL, пути метода, количества единиц окна и собственного HTTP-клиента.
+     * <p>Ограничивает {@code requestLimit} запросов за интервал {@code windowAmount × timeUnit}.
      *
      * @param baseUri      базовый адрес
      * @param createPath   путь метода, если не начинается с {@code /}, он будет добавлен
      * @param windowAmount число единиц времени в окне (>0)
      * @param timeUnit     единица окна
      * @param requestLimit макс. число запросов за одно окно (>0)
-     * @param httpAdapter  адаптер {@link HttpClientAdapter}
+     * @param httpAdapter  HTTP-адаптер
      * @throws IllegalArgumentException если {@code baseUri} или {@code createPath} равны {@code null} или пусты,
      *                                  либо {@code windowAmount <= 0} или {@code requestLimit <= 0}
      * @throws NullPointerException     если {@code timeUnit} равен {@code null}
@@ -249,8 +237,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием собственного лимитера.
-     * <p>Использует базовый URL ({@link #DEFAULT_BASE_URI}) и путь {@link #DEFAULT_CREATE_PATH},
-     * HTTP-клиент из {@link DefaultHttpClientAdapter}.
      * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param limiter стратегия лимитирования
@@ -262,7 +248,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL и собственного лимитера.
-     * <p>Использует дефолтный путь {@link #DEFAULT_CREATE_PATH} и HTTP-клиент из {@link DefaultHttpClientAdapter}.
      * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param baseUri базовый адрес
@@ -274,7 +259,6 @@ public class CrptApi {
 
     /**
      * Конструктор с указанием базового URL, пути и собственного лимитера.
-     * <p>Использует HTTP-клиент из {@link DefaultHttpClientAdapter}.
      * <p>Поваляет ограничить количество запросов через собственную реализацию {@link RequestLimiter}.
      *
      * @param baseUri    базовый адрес
