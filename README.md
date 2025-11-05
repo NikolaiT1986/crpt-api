@@ -1,5 +1,7 @@
 # CrptApi
 
+[![](https://jitpack.io/v/NikolaiT1986/crpt-api.svg)](https://jitpack.io/#NikolaiT1986/crpt-api)
+
 Проект представляет собой класс для работы с API Честного знака (ГИС МТ). Класс является thread-safe и реализует
 ограничение на количество запросов, используя стратегию лимитирования со скользящим окном.
 
@@ -37,6 +39,10 @@
 - `src/test/java/org/nikolait/crptapi/` — тесты для проверки функционала API.
 - `src/test/resources/docs/` — тестовые файлы JSON для создания документов.
 
+### Установка
+
+Библиотека доступна через [JitPack](https://jitpack.io/#NikolaiT1986/crpt-api).
+
 ### Пример использования с минимальным набором параметров
 
 ```java
@@ -54,12 +60,6 @@ HttpResponse<String> response = api.createLpIntroduceGoods(
         document,
         "signature_base64"
 );
-```
-
-### Запустить все тесты
-
-```bash
-  mvn test
 ```
 
 ### Расширяемость
@@ -85,3 +85,5 @@ FixedWindowSemaphoreLimiter
 - Использует ReentrantLock + Condition, без фоновых потоков.
 - Подходит, если допустимы кратковременные скачки нагрузки при смене окна, зато реализация более лёгкая чем
   SlidingWindowRateLimiter.
+
+Лицензия [MIT](https://opensource.org/licenses/MIT)

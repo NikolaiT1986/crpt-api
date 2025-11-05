@@ -22,7 +22,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Thread-safe клиент для API Честного знака (ГИС МТ) с блокирующим ограничением запросов.
  *
- * <p>Реализует «Единый метод создания документов» для сценария«Ввод в оборот товара, произведённого на территории РФ»
+ * <p>Реализует «Единый метод создания документов» для сценария «Ввод в оборот товара, произведённого на территории РФ»,
  * тип {@code LP_INTRODUCE_GOODS} с открепленной подписью в {@code base64}.
  *
  * <p>Класс спроектирован для удобного расширения и тестирования:
@@ -36,6 +36,10 @@ import java.util.concurrent.locks.ReentrantLock;
  * </ul>
  *
  * <p>Все вспомогательные типы объявлены как вложенные классы.
+ * <p>Лицензия <a href="https://opensource.org/licenses/MIT">MIT</a>
+ *
+ * @author <a href="https://github.com/NikolaiT1986">NikolaiT1986</a>
+ * @version 1.0.0
  */
 public class CrptApi {
 
