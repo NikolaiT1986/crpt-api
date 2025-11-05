@@ -22,17 +22,17 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Thread-safe клиент для API Честного знака (ГИС МТ) с блокирующим ограничением запросов.
  *
- * <p>Поддерживает "Единый метод создания документов" {@code /api/v3/lk/documents/create} для сценария
- * «Ввод в оборот товара, произведенного на территории РФ» (тип {@code LP_INTRODUCE_GOODS})
- * с открепленной подписью (base64).
+ * <p>Реализует «Единый метод создания документов» для сценария«Ввод в оборот товара, произведённого на территории РФ»
+ * тип {@code LP_INTRODUCE_GOODS} с открепленной подписью в {@code base64}.
  *
- * <p>Класс спроектирован для удобного тестирования и расширения:
+ * <p>Класс спроектирован для удобного расширения и тестирования:
  * <ul>
+ *   <li>Использует {@code protected} поля конфигурации, что ослабляет инкапсуляцию,
+ *       но упрощает переопределение поведения в наследниках;</li>
  *   <li>Конструктор по заданию {@link #CrptApi(TimeUnit, int)} с дефолтным URL и путём;</li>
  *   <li>Перегруженные конструкторы с возможностью указать {@code baseUri}, {@code createPath};</li>
- *   <li>Возможность внедрить собственные {@link RequestLimiter} и {@link HttpClientAdapter};</li>
- *   <li>Возможность зарегистрировать собственные {@link DocumentConverter};</li>
- *   <li>Ограничение запросов реализовано стратегией лимитера без фоновых потоков.</li>
+ *   <li>Возможность внедрить собственный {@link RequestLimiter} и HTTP-клиент через {@link HttpClientAdapter};</li>
+ *   <li>Возможность зарегистрировать собственные {@link DocumentConverter}.</li>
  * </ul>
  *
  * <p>Все вспомогательные типы объявлены как вложенные классы.
@@ -41,10 +41,11 @@ public class CrptApi {
 
     /**
      * Формат документа в запросе.
-     * <p>MANUAL — формат JSON.</p>
      */
     public enum DocumentFormat {
-        MANUAL, XML, CSV
+        MANUAL, //  формат JSON
+        XML,
+        CSV
     }
 
     /**
@@ -65,8 +66,10 @@ public class CrptApi {
      */
     protected static final String DEFAULT_CREATE_PATH = "/api/v3/lk/documents/create";
 
-    // Общий дефолтный ObjectMapper для сериализации / десериализации JSON.
-    protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    /**
+     * Общий {@link ObjectMapper} по умолчанию.
+     */
+    protected static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     // --- Константы протокола/заголовков
     protected static final String HDR_AUTH = "Authorization";
@@ -77,9 +80,10 @@ public class CrptApi {
     protected static final String BEARER_PREFIX = "Bearer ";
     protected static final String QUERY_PG = "?pg=";
 
+    // --- Конфигурация экземпляра API
     protected final URI baseUri;               // напр., https://ismp.crpt.ru или https://markirovka.sandbox.crptech.ru
     protected final String createPath;         // напр., /api/v3/lk/documents/create
-    protected final HttpClientAdapter http;    // можно заменить/подменить в тестах
+    protected final HttpClientAdapter http;    // адаптер HTTP-клиента
     protected final RequestLimiter limiter;    // стратегия лимитирования запросов
 
     // --- Реестр конвертеров документов
@@ -299,7 +303,7 @@ public class CrptApi {
         this.createPath = normalizePath(requireNotBlank(createPath, "createPath"));
         this.http = requireNotNull(httpAdapter, "httpAdapter");
         this.limiter = requireNotNull(limiter, "limiter");
-        registerConverter(DocumentFormat.MANUAL.name(), new JsonDocumentConverter(OBJECT_MAPPER));
+        registerConverter(DocumentFormat.MANUAL.name(), new JsonDocumentConverter(MAPPER));
     }
 
     // ============================== ПУБЛИЧНЫЕ МЕТОДЫ ==============================
@@ -308,7 +312,7 @@ public class CrptApi {
      * Специализированный метод для «Ввод в оборот. Производство РФ»
      * (тип документа {@link DocumentType#LP_INTRODUCE_GOODS}, формат {@link DocumentFormat#MANUAL}).
      *
-     * @param bearerToken             без префикса "Bearer "
+     * @param accessToken             токен доступа без префикса {@code "Bearer "}
      * @param productGroup            код товарной группы
      * @param document                модель документа
      * @param detachedSignatureBase64 откреплённая подпись в {@code base64}
@@ -321,7 +325,7 @@ public class CrptApi {
      * @throws IllegalStateException    при ошибке сериализации
      */
     public HttpResponse<String> createLpIntroduceGoods(
-            String bearerToken,
+            String accessToken,
             String productGroup,
             LpIntroduceGoodsDocument document,
             String detachedSignatureBase64,
@@ -329,7 +333,7 @@ public class CrptApi {
     ) throws IOException, InterruptedException {
         validate(document);
         return createDocument(
-                bearerToken,
+                accessToken,
                 productGroup,
                 document,
                 detachedSignatureBase64,
@@ -344,12 +348,12 @@ public class CrptApi {
      * где параметр {@code passPgInQuery} по умолчанию равен {@code true}.
      */
     public HttpResponse<String> createLpIntroduceGoods(
-            String bearerToken,
+            String accessToken,
             String productGroup,
             LpIntroduceGoodsDocument document,
             String detachedSignatureBase64
     ) throws IOException, InterruptedException {
-        return createLpIntroduceGoods(bearerToken, productGroup, document, detachedSignatureBase64, true);
+        return createLpIntroduceGoods(accessToken, productGroup, document, detachedSignatureBase64, true);
     }
 
     // ============================== ЗАЩИЩЁННЫЕ МЕТОДЫ ==============================
@@ -358,7 +362,7 @@ public class CrptApi {
      * Защищённый универсальный "Единый метод создания документов",
      * чтобы публичный API соответствовал ТЗ, но реализация была готова к расширению.
      *
-     * @param bearerToken             без префикса "Bearer "
+     * @param accessToken             токен доступа без префикса {@code "Bearer "}
      * @param productGroup            код товарной группы
      * @param document                модель документа, которая будет сериализована и закодирована {@code base64}
      * @param detachedSignatureBase64 откреплённая подпись в {@code base64}
@@ -372,7 +376,7 @@ public class CrptApi {
      * @throws IllegalStateException    при ошибке сериализации
      */
     protected HttpResponse<String> createDocument(
-            String bearerToken,
+            String accessToken,
             String productGroup,
             CrptDocument document,
             String detachedSignatureBase64,
@@ -381,7 +385,7 @@ public class CrptApi {
             boolean passPgInQuery
     ) throws IOException, InterruptedException {
 
-        requireNotBlank(bearerToken, "bearerToken");
+        requireNotBlank(accessToken, "accessToken");
         requireNotBlank(productGroup, "productGroup");
         requireNotNull(document, "document");
         requireNotBlank(detachedSignatureBase64, "detachedSignatureBase64");
@@ -410,7 +414,7 @@ public class CrptApi {
         URI uri = baseUri.resolve(createdPath);
 
         HttpRequest req = HttpRequest.newBuilder(uri)
-                .header(HDR_AUTH, BEARER_PREFIX + bearerToken)
+                .header(HDR_AUTH, BEARER_PREFIX + accessToken)
                 .header(HDR_CONTENT_TYPE, MIME_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJson(body)))
                 .build();
@@ -780,7 +784,7 @@ public class CrptApi {
 
         static String toJson(Object o) {
             try {
-                return OBJECT_MAPPER.writeValueAsString(o);
+                return MAPPER.writeValueAsString(o);
             } catch (JsonProcessingException e) {
                 throw new IllegalStateException("JSON serialization failed", e);
             }
